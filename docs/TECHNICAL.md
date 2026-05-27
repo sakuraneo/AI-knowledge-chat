@@ -57,28 +57,270 @@
 
 ---
 
-## 3. 请求流程
+## 3. 全栈调用流程逻辑分析
 
-### 3.1 流式聊天（主路径）
+本节描述用户点击 Send 到 AI 回复逐字显示的**完整链路**，涵盖 M1（HTTP + LCEL）、M2（Memory + 乐观更新）、M3（SSE 流式）在各层的协作方式。
 
+### 3.1 总览架构
+
+```text
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              浏览器 (client)                                 │
+│  App.tsx → useSendMessage → api/chat.ts                                     │
+│     │              │              │                                          │
+│     │  setMessages │  fetch POST  │  getReader() 循环读                       │
+│     │  更新 UI     │  /api/chat/stream                                      │
+└─────┼──────────────┼──────────────┼──────────────────────────────────────────┘
+      │              │              │
+      │              │   Vite 代理   │  (开发环境 localhost:5173 → 3001)
+      │              ▼              ▼
+┌─────┼──────────────────────────────────────────────────────────────────────┐
+│     │                    服务端 (server)                                      │
+│     │  Express index.ts                                                       │
+│     │     │ res.write (SSE)  ◄── for await ◄── streamChat() ◄── chain.stream │
+│     │     │                              memory/sessions.ts (session 记忆)    │
+└─────┼─────┼──────────────────────────────────────────────────────────────────┘
+      │     │
+      │     ▼
+┌─────┴──────────────────────────────────────────────────────────────────────┐
+│                         DeepSeek API (HTTPS)                                  │
+│                    逐 token 生成 → 流式返回                                    │
+└──────────────────────────────────────────────────────────────────────────────┘
 ```
-1. 用户在 App.tsx 提交消息
-2. useSendMessage.onMutate → 立即追加用户气泡（乐观更新）
-3. useSendMessage.mutationFn → POST /api/chat/stream { message, sessionId? }
-4. Vite 开发代理转发到 Express :3001
-5. Express 调用 streamChat() → LangChain chain.stream()
-6. 每个 token → SSE 事件: token { content }
-7. 客户端 onToken → 追加到 assistant 气泡（打字机效果）
-8. SSE 事件: done { sessionId } → 将 sessionId 写入 sessionStorage
+
+**职责划分：**
+
+| 层级 | 技术 | 职责 |
+|------|------|------|
+| 前端 | React + TanStack Query | UI、乐观更新、SSE 读取、打字机渲染 |
+| 网关 | Express | 路由、校验、SSE 写入（`res.write`） |
+| AI 编排 | LangChain LCEL | Prompt 模板、Memory、流式调用模型 |
+| 模型 | DeepSeek V4 | 自然语言生成 |
+| 配置 | `server/.env` | API Key、模型名（不暴露给前端） |
+
+---
+
+### 3.2 六个阶段详解
+
+#### 阶段 1：用户发消息（纯前端）
+
+```text
+用户在 App.tsx 输入 → 点 Send → sendMessage.mutate(message)
 ```
 
-### 3.2 非流式聊天（调试 / curl）
+TanStack Query `useMutation` 执行顺序：
 
+| 顺序 | 钩子 | 动作 |
+|------|------|------|
+| ① | `onMutate`（同步） | `setMessages` 追加 user 气泡；清空错误态 |
+| ② | `mutationFn`（异步） | 插入空 assistant 气泡；调用 `sendChatStream()` |
+
+此时 UI 状态：`[用户: 你好]` + `[助手: ▌]`（空内容 + 闪烁光标）
+
+**关键文件：** `client/src/hooks/useSendMessage.ts`、`client/src/App.tsx`
+
+---
+
+#### 阶段 2：前端发起 HTTP 流式请求
+
+```typescript
+// client/src/api/chat.ts
+fetch('/api/chat/stream', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ message, sessionId }),
+});
 ```
+
+| 字段 | 来源 | 说明 |
+|------|------|------|
+| `message` | 用户输入 | 必填 |
+| `sessionId` | `sessionStorage` 或空 | 有则继续同一会话；无则服务端生成 |
+
+开发环境下，Vite 将 `/api/chat/stream` 代理到 `http://localhost:3001`。
+
+**为何不用 `EventSource`？** `EventSource` 仅支持 GET；本接口需 POST 携带 body，故使用 `fetch` + `ReadableStream`。
+
+---
+
+#### 阶段 3：Express 建立 SSE 通道
+
+```typescript
+// server/src/index.ts
+res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+res.flushHeaders();                              // 响应头立刻发出，连接保持打开
+writeSse(res, 'session', { sessionId });         // 第一条 SSE 事件
+```
+
+从这一刻起，HTTP 连接**不会关闭**，后续通过 `res.write()` 分段写入响应体。
+
+**推送本质：** 不是 Express 专有「推送 API」，而是 Node.js `http.ServerResponse.write()` 经 TCP 把字节送到浏览器；Express 只做薄封装。
+
+```text
+res.write() → Node http → TCP socket → 浏览器 response.body 可读流
+```
+
+---
+
+#### 阶段 4：LangChain + DeepSeek 流式生成
+
+```typescript
+// server/src/index.ts
+for await (const token of streamChat(message, sessionId)) {
+  writeSse(res, 'token', { content: token });
+}
+```
+
+`streamChat`（`server/src/chains/chat.ts`）内部流程：
+
+```text
+1. chainWithHistory.stream({ input }, { sessionId })
+2. RunnableWithMessageHistory 从 sessions Map 取出该 session 的历史
+3. 拼 Prompt：system + chat_history + 用户新消息
+4. ChatOpenAI (streaming: true) → HTTPS → DeepSeek API
+5. DeepSeek 每产出一个 token → LangChain yield chunk
+6. streamChat 通过 async function* yield chunk 交给 for await 循环
+7. 本轮 user/assistant 消息写回 ChatMessageHistory（供下轮使用）
+```
+
+`async function*` 中的 `yield chunk` 表示：**产出一小块文本并暂停**，等待消费方取走后继续，适合 LLM 边生成边转发。
+
+---
+
+#### 阶段 5：SSE 事件流（网络传输）
+
+服务端按顺序写入（示例）：
+
+```text
+event: session
+data: {"sessionId":"abc-123"}
+
+event: token
+data: {"content":"你"}
+
+event: token
+data: {"content":"好"}
+
+event: done
+data: {"sessionId":"abc-123"}
+
+→ res.end()  // 关闭 HTTP 响应，连接结束
+```
+
+| 事件 | 含义 |
+|------|------|
+| `session` | 告知 sessionId（新建或沿用） |
+| `token` | 一个文本片段（打字机的一帧） |
+| `done` | 流结束，无更多 token |
+| `error` | 服务端异常 |
+
+> **注意：** 推送从第一次 `res.write` 就开始了，`done` 不是「开始推送」，而是「推送结束」的信号。
+
+---
+
+#### 阶段 6：前端读流 + 更新 UI
+
+```typescript
+// client/src/api/chat.ts
+const reader = response.body.getReader();
+while (true) {
+  const { done, value } = await reader.read();
+  if (done) break;                              // 对应服务端 res.end()
+  buffer += decoder.decode(value, { stream: true });
+  // parseSseEvents → 按 event 类型回调
+}
+```
+
+| SSE 事件 | 前端回调 | UI 效果 |
+|----------|----------|---------|
+| `session` | `onSessionId` → `setSessionId` + `sessionStorage` | 保存会话钥匙 |
+| `token` | `onToken` → `setMessages(content += token)` | 逐字追加，打字机效果 |
+| `done` | 循环退出 | — |
+| `error` | `throw` → `onError` 回滚 | 移除失败的消息 |
+
+流结束后：`mutationFn` resolve → `isPending = false` → 闪烁光标消失。
+
+**`setMessages` 追加 token 的逻辑：**
+
+```typescript
+setMessages((prev) =>
+  prev.map((m) =>
+    m.id === assistantId ? { ...m, content: m.content + token } : m,
+  ),
+);
+```
+
+- 函数式更新：基于最新 `prev` 计算下一状态
+- `map` + 新对象：不可变更新，只修改 `assistantId` 对应那条
+- 每次 token 触发一次重渲染 → 视觉上逐字出现
+
+---
+
+### 3.3 完整时序表
+
+| 步骤 | 位置 | 动作 |
+|------|------|------|
+| 1 | 前端 `onMutate` | 乐观显示用户消息 |
+| 2 | 前端 `mutationFn` | 插入空 assistant 气泡 |
+| 3 | 前端 `fetch` | POST 开启流式请求 |
+| 4 | Express | 设置 SSE 响应头，写 `session` 事件 |
+| 5 | LangChain | 读取 memory，调用 DeepSeek stream |
+| 6 | DeepSeek | 逐 token 生成文本 |
+| 7 | Express | 每个 token → `res.write`（SSE） |
+| 8 | 前端 `reader.read` | 读字节，解析 SSE |
+| 9 | 前端 `onToken` | 追加到 `assistant.content` |
+| 10 | Express | 写 `done`，`res.end()` |
+| 11 | 前端 | `isPending = false`，光标消失 |
+
+---
+
+### 3.4 三条并行「线」
+
+理解流程时可把三条线分开看：
+
+```text
+① 控制线：fetch POST 发起 → done/end 结束
+② 数据线：DeepSeek token → yield → res.write → reader.read → onToken → setMessages
+③ 状态线：sessionId 与 memory 在前后端各自维护
+```
+
+| 存储内容 | 位置 | 作用 |
+|----------|------|------|
+| `sessionId` 字符串 | 浏览器 `sessionStorage` | 刷新后知道继续哪次会话（钥匙） |
+| 对话历史 | 服务端 `sessions` Map | LLM 多轮上下文（记忆本体） |
+| 消息列表 | React `messages` state | 界面展示 |
+
+---
+
+### 3.5 M1 / M2 / M3 在流程中的落点
+
+| 里程碑 | 落在流程的哪一段 |
+|--------|------------------|
+| **M1** | 整条链打通：React ↔ Express ↔ LangChain ↔ DeepSeek |
+| **M2** | `sessionId` + 服务端 `ChatMessageHistory`；`onMutate` 乐观更新 |
+| **M3** | `chain.stream()` + SSE + `ReadableStream` + 逐 token 更新 UI |
+
+---
+
+### 3.6 非流式路径（调试 / curl）
+
+主路径为流式；以下接口保留用于调试：
+
+```text
 POST /api/chat { message, sessionId? }
-→ runChat() → chain.invoke()
-→ { reply, sessionId }
+  → runChat() → chain.invoke()
+  → 等待完整回复
+  → res.json({ reply, sessionId })
 ```
+
+与流式路径的区别：
+
+| | 非流式 `POST /api/chat` | 流式 `POST /api/chat/stream` |
+|--|-------------------------|------------------------------|
+| LangChain | `.invoke()` | `.stream()` |
+| HTTP 响应 | 一次 JSON | 长连接 + 多次 SSE |
+| 前端 | `response.json()` | `response.body.getReader()` |
+| 用户体验 | 等待后一次性显示 | 逐字打字 |
 
 ---
 

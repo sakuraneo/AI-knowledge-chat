@@ -23,8 +23,14 @@ interface SseEvent {
   data: string;
 }
 
+/**
+ * 
+ * @param buffer  防止粘包的拆包函数，将buffer拆分成一个个事件, 每个事件包含event和data
+ * @returns { events: SseEvent[]; rest: string } 事件数组和剩余的buffer
+ */
 function parseSseEvents(buffer: string): { events: SseEvent[]; rest: string } {
   const events: SseEvent[] = [];
+  // 拆包
   const blocks = buffer.split('\n\n');
 
   for (let i = 0; i < blocks.length - 1; i += 1) {
@@ -47,6 +53,7 @@ function parseSseEvents(buffer: string): { events: SseEvent[]; rest: string } {
     }
   }
 
+  // 最后一块可能不完整，留到 buffer 中下次读取
   return { events, rest: blocks[blocks.length - 1] ?? '' };
 }
 
@@ -93,6 +100,7 @@ export async function sendChatStream(
 
     buffer += decoder.decode(value, { stream: true });
     const { events, rest } = parseSseEvents(buffer);
+    // 剩余的buffer作为下次读取的buffer
     buffer = rest;
 
     for (const { event, data } of events) {
