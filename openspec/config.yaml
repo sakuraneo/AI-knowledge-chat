@@ -1,0 +1,21 @@
+# OpenSpec project configuration
+# Docs: https://github.com/Fission-AI/OpenSpec
+
+schema: spec-driven
+
+# Spec style: English headers (Requirement / Scenario), Chinese body (B 英头中文)
+language:
+  spec_headers: en
+  spec_body: zh
+
+project:
+  name: ai-knowledge-chat
+  monorepo:
+    - client
+    - server
+  env_file: server/.env
+
+workflow:
+  profile: core
+  # propose → review → apply → archive
+  strict_propose_from_milestone: M4
