@@ -67,10 +67,10 @@
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                              浏览器 (client)                                 │
 │  App.tsx → useSendMessage → api/chat.ts                                     │
-│     │              │              │                                          │
-│     │  setMessages │  fetch POST  │  getReader() 循环读                       │
-│     │  更新 UI     │  /api/chat/stream                                      │
-└─────┼──────────────┼──────────────┼──────────────────────────────────────────┘
+│     │              │              │                                         │
+│     │  setMessages │  fetch POST  │  getReader() 循环读                      │
+│     │  更新 UI     │  /api/chat/stream                                       │
+└─────┼──────────────┼──────────────┼─────────────────────────────────────────┘
       │              │              │
       │              │   Vite 代理   │  (开发环境 localhost:5173 → 3001)
       │              ▼              ▼
@@ -500,9 +500,11 @@ pnpm build            # 构建 server（tsc）+ client（vite）
 
 ## 10. 里程碑路线图（学习用）
 
-| 阶段 | 重点 | 关键文件 |
-|------|------|----------|
-| M1 | HTTP + LCEL | `server/src/index.ts`、`server/src/chains/chat.ts`、`client/src/App.tsx` |
-| M2 | Memory + Query | `server/src/memory/sessions.ts`、`client/src/hooks/useSendMessage.ts` |
-| M3 | 流式输出 | `POST /api/chat/stream`、`client/src/api/chat.ts` |
-| M4 | RAG | 待定 — PDF 加载、Embeddings、向量库、Retriever |
+> **想懂项目读本文；想验收 / 改行为读 [openspec/specs/](../openspec/specs/)**（各 spec 顶部有 30 秒摘要）。
+
+| 阶段 | 重点 | 关键文件 | OpenSpec（行为契约） |
+|------|------|----------|----------------------|
+| M1 | HTTP + LCEL | `server/src/index.ts`、`server/src/chains/chat.ts`、`client/src/App.tsx` | [chat/spec.md](../openspec/specs/chat/spec.md)、[client/spec.md](../openspec/specs/client/spec.md)、[config/spec.md](../openspec/specs/config/spec.md) |
+| M2 | Memory + Query | `server/src/memory/sessions.ts`、`client/src/hooks/useSendMessage.ts` | [memory/spec.md](../openspec/specs/memory/spec.md)、[client/spec.md](../openspec/specs/client/spec.md) |
+| M3 | 流式输出 | `POST /api/chat/stream`、`client/src/api/chat.ts` | [chat/spec.md](../openspec/specs/chat/spec.md)、[client/spec.md](../openspec/specs/client/spec.md) |
+| M4 | RAG | 待定 — PDF 加载、Embeddings、向量库、Retriever | [changes/add-rag-pdf-chat/](../openspec/changes/add-rag-pdf-chat/proposal.md)（草案） |

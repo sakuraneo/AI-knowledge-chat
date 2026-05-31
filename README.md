@@ -67,8 +67,10 @@ ai-knowledge-chat/
 │       ├── memory/         # 内存 session 存储
 │       ├── config.ts       # 环境变量配置
 │       └── index.ts        # HTTP 路由
+├── openspec/               # OpenSpec：specs + changes（M4 起）
 ├── docs/
-│   └── TECHNICAL.md        # 架构与 API 详细文档
+│   ├── TECHNICAL.md        # 架构与 API 详细文档
+│   └── OPENSPEC.md         # Spec 驱动工作流说明
 ├── pnpm-workspace.yaml
 └── package.json
 ```
@@ -82,7 +84,7 @@ ai-knowledge-chat/
 | `POST` | `/api/chat/stream` | 流式聊天（SSE） |
 | `POST` | `/api/chat/reset` | 清空 session 记忆 |
 
-完整架构、数据流和设计说明见 [docs/TECHNICAL.md](./docs/TECHNICAL.md)。
+**想懂项目读 [docs/TECHNICAL.md](./docs/TECHNICAL.md)；想验收 / 改行为读 [openspec/specs/](./openspec/specs/)**（各 spec 顶部有 30 秒摘要）。
 
 ## 环境变量
 
@@ -95,13 +97,29 @@ MODEL=deepseek-v4-flash   # 或 deepseek-v4-pro
 PORT=3001
 ```
 
+## OpenSpec（M4 起）
+
+行为契约在 `openspec/specs/`（chat、memory、client、config）；流程说明见 [docs/OPENSPEC.md](./docs/OPENSPEC.md)。  
+M4 变更草案：`openspec/changes/add-rag-pdf-chat/`（审阅后实现，不写代码直到确认）。
+
+| 步骤 | 说明 |
+|------|------|
+| 阅读 | `docs/OPENSPEC.md`、`openspec/changes/add-rag-pdf-chat/proposal.md` |
+| 审阅 | design.md、tasks.md、delta specs |
+| 实现 | 确认后 Phase 1 → 2 → 3（或 Cursor `/opsx:apply`） |
+
+可选 CLI：`npm i -g @fission-ai/openspec@latest && openspec init`（生成 `/opsx:*` 命令；目录已手建可跳过）。
+
+后续：`add-rag-eval-harness`（评测）、`add-api-test-harness`（M5 测试）。
+
 ## 路线图
 
 - [x] M1 — 基础聊天
 - [x] M2 — 多轮记忆
 - [x] M3 — SSE 流式输出
-- [ ] M4 — RAG（PDF 上传 + 检索）
-- [ ] M5 — 限流、测试、部署
+- [ ] M4 — RAG（PDF + 引用；见 `openspec/changes/add-rag-pdf-chat/`）
+- [ ] M4.5 — RAG 评测 harness
+- [ ] M5 — API 测试 harness、限流、部署
 
 ## 许可证
 
