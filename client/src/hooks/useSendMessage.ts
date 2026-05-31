@@ -1,6 +1,6 @@
 import { useMutation } from '@tanstack/react-query';
 import type { Dispatch, SetStateAction } from 'react';
-import { sendChatStream, type ChatMessage } from '../api/chat';
+import { sendChatStream, type ChatMessage, type SourceCitation } from '../api/chat';
 
 const SESSION_KEY = 'chat-session-id';
 
@@ -24,6 +24,7 @@ interface UseSendMessageOptions {
   sessionId: string | null;
   setSessionId: (id: string | null) => void;
   setMessages: Dispatch<SetStateAction<ChatMessage[]>>;
+  documentIds: string[];
   onError: (message: string) => void;
 }
 
@@ -31,6 +32,7 @@ export function useSendMessage({
   sessionId,
   setSessionId,
   setMessages,
+  documentIds,
   onError,
 }: UseSendMessageOptions) {
   return useMutation({
@@ -42,21 +44,33 @@ export function useSendMessage({
         { id: assistantId, role: 'assistant', content: '' },
       ]);
 
-      const result = await sendChatStream(message, sessionId ?? undefined, {
-        onSessionId: (id) => {
-          setSessionId(id);
-          storeSessionId(id);
+      const result = await sendChatStream(
+        message,
+        sessionId ?? undefined,
+        documentIds.length > 0 ? documentIds : undefined,
+        {
+          onSessionId: (id) => {
+            setSessionId(id);
+            storeSessionId(id);
+          },
+          onToken: (token) => {
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === assistantId ? { ...m, content: m.content + token } : m,
+              ),
+            );
+          },
+          onSources: (sources: SourceCitation[]) => {
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === assistantId ? { ...m, sources } : m,
+              ),
+            );
+          },
         },
-        onToken: (token) => {
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.id === assistantId ? { ...m, content: m.content + token } : m,
-            ),
-          );
-        },
-      });
+      );
 
-      return { sessionId: result.sessionId, assistantId };
+      return { sessionId: result.sessionId, assistantId, sources: result.sources };
     },
     onMutate: (message) => {
       const userMessage: ChatMessage = { id: createId(), role: 'user', content: message };
@@ -67,6 +81,13 @@ export function useSendMessage({
     onSuccess: (data) => {
       setSessionId(data.sessionId);
       storeSessionId(data.sessionId);
+      if (data.sources.length > 0) {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === data.assistantId ? { ...m, sources: data.sources } : m,
+          ),
+        );
+      }
     },
     onError: (error, _message, context) => {
       setMessages((prev) => {

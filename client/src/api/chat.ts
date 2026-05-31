@@ -1,12 +1,22 @@
+export interface SourceCitation {
+  documentId: string;
+  filename: string;
+  page?: number;
+  snippet: string;
+  score: number;
+}
+
 export interface ChatMessage {
   id: string;
   role: 'user' | 'assistant';
   content: string;
+  sources?: SourceCitation[];
 }
 
 export interface ChatResponse {
   reply: string;
   sessionId: string;
+  sources?: SourceCitation[];
 }
 
 export interface ChatErrorBody {
@@ -16,6 +26,7 @@ export interface ChatErrorBody {
 
 export interface StreamChatResult {
   sessionId: string;
+  sources: SourceCitation[];
 }
 
 interface SseEvent {
@@ -57,18 +68,29 @@ function parseSseEvents(buffer: string): { events: SseEvent[]; rest: string } {
   return { events, rest: blocks[blocks.length - 1] ?? '' };
 }
 
+function parseSources(payload: Record<string, unknown>): SourceCitation[] {
+  if (!Array.isArray(payload.sources)) return [];
+  return payload.sources as SourceCitation[];
+}
+
 export async function sendChatStream(
   message: string,
   sessionId: string | undefined,
+  documentIds: string[] | undefined,
   handlers: {
     onSessionId?: (sessionId: string) => void;
     onToken: (token: string) => void;
+    onSources?: (sources: SourceCitation[]) => void;
   },
 ): Promise<StreamChatResult> {
   const response = await fetch('/api/chat/stream', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message, sessionId }),
+    body: JSON.stringify({
+      message,
+      sessionId,
+      documentIds: documentIds?.length ? documentIds : undefined,
+    }),
   });
 
   if (!response.ok) {
@@ -93,6 +115,7 @@ export async function sendChatStream(
   const decoder = new TextDecoder();
   let buffer = '';
   let resolvedSessionId = sessionId ?? '';
+  let sources: SourceCitation[] = [];
 
   while (true) {
     const { done, value } = await reader.read();
@@ -104,23 +127,37 @@ export async function sendChatStream(
     buffer = rest;
 
     for (const { event, data } of events) {
-      const payload = JSON.parse(data) as Record<string, string>;
+      const payload = JSON.parse(data) as Record<string, unknown>;
 
-      if (event === 'session' && payload.sessionId) {
+      if (event === 'session' && typeof payload.sessionId === 'string') {
         resolvedSessionId = payload.sessionId;
         handlers.onSessionId?.(payload.sessionId);
       }
 
-      if (event === 'token' && payload.content) {
+      if (event === 'token' && typeof payload.content === 'string') {
         handlers.onToken(payload.content);
       }
 
-      if (event === 'error') {
-        throw new Error(payload.message ?? 'Stream failed');
+      if (event === 'citation') {
+        sources = parseSources(payload);
+        handlers.onSources?.(sources);
       }
 
-      if (event === 'done' && payload.sessionId) {
-        resolvedSessionId = payload.sessionId;
+      if (event === 'error') {
+        throw new Error(
+          typeof payload.message === 'string' ? payload.message : 'Stream failed',
+        );
+      }
+
+      if (event === 'done') {
+        if (typeof payload.sessionId === 'string') {
+          resolvedSessionId = payload.sessionId;
+        }
+        const doneSources = parseSources(payload);
+        if (doneSources.length > 0) {
+          sources = doneSources;
+          handlers.onSources?.(sources);
+        }
       }
     }
   }
@@ -129,17 +166,22 @@ export async function sendChatStream(
     throw new Error('Stream ended without sessionId');
   }
 
-  return { sessionId: resolvedSessionId };
+  return { sessionId: resolvedSessionId, sources };
 }
 
 export async function sendChat(
   message: string,
   sessionId?: string,
+  documentIds?: string[],
 ): Promise<ChatResponse> {
   const response = await fetch('/api/chat', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message, sessionId }),
+    body: JSON.stringify({
+      message,
+      sessionId,
+      documentIds: documentIds?.length ? documentIds : undefined,
+    }),
   });
 
   const raw = await response.text();
@@ -167,7 +209,7 @@ export async function sendChat(
     throw new Error('Invalid response: missing reply or sessionId');
   }
 
-  return { reply: data.reply, sessionId: data.sessionId };
+  return { reply: data.reply, sessionId: data.sessionId, sources: data.sources };
 }
 
 export async function resetChatSession(sessionId: string): Promise<void> {

@@ -19,4 +19,10 @@ export const config = {
   deepseekApiKey: requireEnv('DEEPSEEK_API_KEY'),
   deepseekBaseUrl: process.env.DEEPSEEK_BASE_URL ?? 'https://api.deepseek.com',
   model: process.env.MODEL ?? 'deepseek-v4-flash',
+  embeddingModel: process.env.EMBEDDING_MODEL ?? 'hashing-local',
+  embeddingDimensions: Number(process.env.EMBEDDING_DIMENSIONS ?? 512),
+  ragTopK: Number(process.env.RAG_TOP_K ?? 4),
+  ragChunkSize: Number(process.env.RAG_CHUNK_SIZE ?? 800),
+  ragChunkOverlap: Number(process.env.RAG_CHUNK_OVERLAP ?? 100),
+  uploadMaxBytes: Number(process.env.UPLOAD_MAX_BYTES ?? 10 * 1024 * 1024),
 } as const;
