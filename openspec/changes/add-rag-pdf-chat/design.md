@@ -22,7 +22,7 @@
 | 决策 | 选择 | 理由 |
 |------|------|------|
 | PDF 解析 | `pdf-parse` 或 LangChain PDF loader | 生态一致 |
-| Embedding | DeepSeek embedding 或 OpenAI-compatible embedding API | 与现有 baseURL 模式一致 |
+| Embedding | **本地 Feature Hashing** | DeepSeek 无 API；避免 sharp/xenova 原生依赖问题 |
 | 向量存储 | 先内存/Chroma 文件持久化 | 学习成本低 |
 | 检索 | Top-K similarity + 可选 MMR | 经典 RAG |
 | Chat 集成 | 扩展 `POST /api/chat/stream` body：`documentIds` 或 ingest 后自动 attach session | 少改前端路径 |
@@ -50,7 +50,9 @@ POST /api/chat/stream
 - 大 PDF 阻塞：上传异步 + 状态轮询（Phase 2）
 - Token 超限：检索 top-K + chunk 大小限制
 
-## Open Questions
+| 文档生命周期 | **New chat 只清对话记忆，不删 PDF 向量**（决策 A） |
 
-- [ ] Embedding 模型是否用 DeepSeek 官方 embedding endpoint
-- [ ] 文档生命周期：New chat 是否删除向量
+## Open Questions（已关闭）
+
+- [x] Embedding：**本地 Feature Hashing**（替代 DeepSeek / xenova+sharp）
+- [x] New chat：**不删除**向量；新 session 需重新上传 PDF

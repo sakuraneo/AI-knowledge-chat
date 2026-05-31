@@ -28,5 +28,5 @@
 
 ## Approval
 
-- [ ] 用户审阅 proposal + design + tasks
-- [ ] 用户明确回复「可以」后再 `/opsx:apply` Phase 1
+- [x] 用户审阅 proposal + design + tasks
+- [x] 用户明确回复「可以」后再 `/opsx:apply` Phase 1

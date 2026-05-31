@@ -358,6 +358,20 @@ prompt.pipe(model).pipe(new StringOutputParser())
 | `token` | `{ content }` |
 | `done` | `{ sessionId }` |
 | `error` | `{ message }` |
+| `citation` | `{ sources: [...] }`（M4，有检索结果时，在 token 之前） |
+| `done` | `{ sessionId, sources? }`（M4 起 `sources` 可选） |
+
+---
+
+### 4.4 RAG 检索（M4）
+
+- **Embedding：** 本地 Feature Hashing（无 API、无 native 依赖；学习/demo 用）
+- **解析：** `pdf-parse` 提取文本 → `RecursiveCharacterTextSplitter` 分块
+- **向量：** 内存 cosine 相似度（每 `sessionId` 独立索引）
+- **检索：** Top-K（`RAG_TOP_K`）→ 注入 system prompt 的 `Document excerpts`
+- **New chat（决策 A）：** 只清 `ChatMessageHistory`，**不删** PDF 向量；新 session 需重新上传
+
+**关键文件：** `server/src/rag/`、`client/src/api/documents.ts`
 
 ---
 
@@ -382,7 +396,8 @@ prompt.pipe(model).pipe(new StringOutputParser())
 ```json
 {
   "message": "Hello",
-  "sessionId": "optional-uuid"
+  "sessionId": "optional-uuid",
+  "documentIds": ["optional-doc-uuid"]
 }
 ```
 
@@ -391,7 +406,8 @@ prompt.pipe(model).pipe(new StringOutputParser())
 ```json
 {
   "reply": "Hi! How can I help?",
-  "sessionId": "abc-123"
+  "sessionId": "abc-123",
+  "sources": []
 }
 ```
 
@@ -399,11 +415,57 @@ prompt.pipe(model).pipe(new StringOutputParser())
 
 ---
 
+### `POST /api/documents/upload`
+
+上传 PDF 并 ingest（multipart，M4）。
+
+**请求：** `Content-Type: multipart/form-data`
+
+| 字段 | 说明 |
+|------|------|
+| `file` | PDF 文件 |
+| `sessionId` | 可选；缺省由服务端生成 |
+
+**响应 200**
+
+```json
+{
+  "documentId": "uuid",
+  "sessionId": "abc-123",
+  "filename": "paper.pdf",
+  "chunkCount": 12
+}
+```
+
+---
+
+### `GET /api/documents?sessionId=`
+
+列出某 session 已上传文档（M4）。
+
+**响应 200**
+
+```json
+{
+  "documents": [
+    {
+      "documentId": "uuid",
+      "sessionId": "abc-123",
+      "filename": "paper.pdf",
+      "chunkCount": 12,
+      "uploadedAt": "2026-05-24T12:00:00.000Z"
+    }
+  ]
+}
+```
+
+---
+
 ### `POST /api/chat/stream`
 
 SSE 流式聊天。
 
-**请求：** 与 `/api/chat` 相同
+**请求：** 与 `/api/chat` 相同（含可选 `documentIds`）
 
 **响应：** `Content-Type: text/event-stream`
 
@@ -411,21 +473,21 @@ SSE 流式聊天。
 event: session
 data: {"sessionId":"abc-123"}
 
+event: citation
+data: {"sources":[{"documentId":"…","filename":"paper.pdf","snippet":"…","score":0.82}]}
+
 event: token
 data: {"content":"你"}
 
-event: token
-data: {"content":"好"}
-
 event: done
-data: {"sessionId":"abc-123"}
+data: {"sessionId":"abc-123","sources":[…]}
 ```
 
 ---
 
 ### `POST /api/chat/reset`
 
-清空指定 session 的服务端记忆。
+清空指定 session 的**对话记忆**（M4 决策 A：不删除 PDF 向量）。
 
 **请求**
 
@@ -447,6 +509,7 @@ data: {"sessionId":"abc-123"}
 |------|----------|------|
 | `messages` | `App.tsx` 的 React `useState` | UI 消息列表 |
 | `sessionId` | React state + `sessionStorage` | 刷新页面后继续同一会话 |
+| `documents` | `App.tsx` 的 React `useState` | 当前 session 已上传 PDF 列表 |
 | `sendMessage.isPending` | TanStack Query `useMutation` | 禁用输入、显示光标 |
 | 对话历史（供 LLM 使用） | 服务端 `sessions` Map | 真正的多轮上下文 |
 
@@ -466,7 +529,12 @@ data: {"sessionId":"abc-123"}
 |------|------|--------|------|
 | `DEEPSEEK_API_KEY` | 是 | — | DeepSeek API 密钥 |
 | `DEEPSEEK_BASE_URL` | 否 | `https://api.deepseek.com` | API 基础地址 |
-| `MODEL` | 否 | `deepseek-v4-flash` | 模型 ID（更强可选 `deepseek-v4-pro`） |
+| `MODEL` | 否 | `deepseek-v4-flash` | Chat 模型 ID |
+| `EMBEDDING_MODEL` | 否 | `hashing-local` | 本地 RAG 向量策略（固定 hashing） |
+| `EMBEDDING_DIMENSIONS` | 否 | `512` | Hashing 向量维度 |
+| `RAG_TOP_K` | 否 | `4` | 检索返回片段数 |
+| `RAG_CHUNK_SIZE` | 否 | `800` | PDF 分块大小 |
+| `UPLOAD_MAX_BYTES` | 否 | `10485760` | 上传 PDF 上限（10MB） |
 | `PORT` | 否 | `3001` | Express 监听端口 |
 
 ### 为什么 DeepSeek 用 `ChatOpenAI`？
@@ -492,8 +560,9 @@ pnpm build            # 构建 server（tsc）+ client（vite）
 | 限制 | 说明 |
 |------|------|
 | 内存 session | 服务重启后丢失；不适合生产多实例部署 |
-| 无鉴权 | 任何能访问 API 的人均可聊天 |
-| 尚无 RAG | M4 将加入文档上传 + 向量检索 |
+| 无鉴权 | 任何能访问 API 的人均可聊天 / 上传 |
+| 内存向量 | 服务重启后 PDF 索引丢失；New chat 不删旧 session 向量（决策 A） |
+| 尚无 RAG 评测 | M4.5 计划 `add-rag-eval-harness` |
 | Vite 代理 | 仅开发环境；生产需 nginx 等反向代理 `/api` |
 
 ---
@@ -507,4 +576,4 @@ pnpm build            # 构建 server（tsc）+ client（vite）
 | M1 | HTTP + LCEL | `server/src/index.ts`、`server/src/chains/chat.ts`、`client/src/App.tsx` | [chat/spec.md](../openspec/specs/chat/spec.md)、[client/spec.md](../openspec/specs/client/spec.md)、[config/spec.md](../openspec/specs/config/spec.md) |
 | M2 | Memory + Query | `server/src/memory/sessions.ts`、`client/src/hooks/useSendMessage.ts` | [memory/spec.md](../openspec/specs/memory/spec.md)、[client/spec.md](../openspec/specs/client/spec.md) |
 | M3 | 流式输出 | `POST /api/chat/stream`、`client/src/api/chat.ts` | [chat/spec.md](../openspec/specs/chat/spec.md)、[client/spec.md](../openspec/specs/client/spec.md) |
-| M4 | RAG | 待定 — PDF 加载、Embeddings、向量库、Retriever | [changes/add-rag-pdf-chat/](../openspec/changes/add-rag-pdf-chat/proposal.md)（草案） |
+| M4 | PDF RAG + 引用 | `server/src/rag/`、`POST /api/documents/upload`、`client/src/api/documents.ts` | [changes/add-rag-pdf-chat/](../openspec/changes/add-rag-pdf-chat/proposal.md)（待 archive） |
