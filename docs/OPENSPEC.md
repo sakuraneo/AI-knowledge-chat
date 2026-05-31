@@ -24,6 +24,7 @@ openspec/
 └── config.yaml
 
 docs/TECHNICAL.md       # 架构与调用链（人读）
+docs/SPECTECHNICAL.md   # Spec 机制、合并规则、FAQ（与 TECHNICAL 同级）
 docs/OPENSPEC.md          # 本文件（流程）
 ```
 
@@ -68,4 +69,4 @@ openspec init   # 选择 Cursor，生成 slash commands
 | RAG 评测 | `add-rag-eval-harness` | M4 完成后 |
 | 自动化测试 | `add-api-test-harness` | M5 |
 
-Test = 接口对不对；Eval = AI 答得好不好。见各 change 的 `proposal.md`。
+> 合并规则与 FAQ 详见 [SPECTECHNICAL.md](./SPECTECHNICAL.md)。

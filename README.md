@@ -70,6 +70,7 @@ ai-knowledge-chat/
 ├── openspec/               # OpenSpec：specs + changes（M4 起）
 ├── docs/
 │   ├── TECHNICAL.md        # 架构与 API 详细文档
+│   ├── SPECTECHNICAL.md    # Spec 机制、delta 合并规则、FAQ
 │   └── OPENSPEC.md         # Spec 驱动工作流说明
 ├── pnpm-workspace.yaml
 └── package.json
@@ -84,7 +85,7 @@ ai-knowledge-chat/
 | `POST` | `/api/chat/stream` | 流式聊天（SSE） |
 | `POST` | `/api/chat/reset` | 清空 session 记忆 |
 
-**想懂项目读 [docs/TECHNICAL.md](./docs/TECHNICAL.md)；想验收 / 改行为读 [openspec/specs/](./openspec/specs/)**（各 spec 顶部有 30 秒摘要）。
+**想懂项目读 [docs/TECHNICAL.md](./docs/TECHNICAL.md)；想验收 / 改行为读 [openspec/specs/](./openspec/specs/)；Spec 合并规则与 FAQ 见 [docs/SPECTECHNICAL.md](./docs/SPECTECHNICAL.md)。**
 
 ## 环境变量
 

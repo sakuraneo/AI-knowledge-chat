@@ -500,7 +500,7 @@ pnpm build            # 构建 server（tsc）+ client（vite）
 
 ## 10. 里程碑路线图（学习用）
 
-> **想懂项目读本文；想验收 / 改行为读 [openspec/specs/](../openspec/specs/)**（各 spec 顶部有 30 秒摘要）。
+> **想懂项目读本文；想验收 / 改行为读 [openspec/specs/](../openspec/specs/)；Spec 合并规则与 FAQ 见 [SPECTECHNICAL.md](./SPECTECHNICAL.md)**（各 spec 顶部有 30 秒摘要）。
 
 | 阶段 | 重点 | 关键文件 | OpenSpec（行为契约） |
 |------|------|----------|----------------------|
