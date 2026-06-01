@@ -24,6 +24,7 @@ openspec/
 └── config.yaml
 
 docs/TECHNICAL.md       # 架构与调用链（人读）
+docs/RAG.TECHNOLOGY.md  # RAG 专题（原理、实现、FAQ）
 docs/SPECTECHNICAL.md   # Spec 机制、合并规则、FAQ（与 TECHNICAL 同级）
 docs/OPENSPEC.md          # 本文件（流程）
 ```

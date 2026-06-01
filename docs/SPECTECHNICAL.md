@@ -4,6 +4,7 @@
 
 > **阅读指引**
 > - 想懂项目怎么跑 → [TECHNICAL.md](./TECHNICAL.md)
+> - 想懂 RAG / Embedding / Citation → [RAG.TECHNOLOGY.md](./RAG.TECHNOLOGY.md)
 > - 想验收 / 改行为 → [openspec/specs/](../openspec/specs/)（各 spec 顶部有 30 秒摘要）
 > - 想走 propose / apply / archive 流程 → [OPENSPEC.md](./OPENSPEC.md)
 > - 想搞清 spec 是什么、delta 怎么合并 → **本文档**
@@ -15,6 +16,7 @@
 | 文档 | 层级 | 内容 | 主要读者 |
 |------|------|------|----------|
 | [TECHNICAL.md](./TECHNICAL.md) | 架构 | Monorepo、全栈六阶段、API、状态模型 | 人（学习 / 面试 / onboarding） |
+| [RAG.TECHNOLOGY.md](./RAG.TECHNOLOGY.md) | RAG 专题 | 原理、M4 实现链路、DeepSeek prompt、FAQ | 人（学 AI / 面试 RAG） |
 | [SPECTECHNICAL.md](./SPECTECHNICAL.md) | Spec 机制 | 合并规则、目录语义、FAQ | 人 + AI（实现 / Review 前查阅） |
 | [OPENSPEC.md](./OPENSPEC.md) | 流程 | propose → apply → archive、何时必须 propose | 人 + AI |
 | `openspec/specs/` | 行为契约 | 当前系统 **必须** 怎样（Requirement + Scenario） | 人验收 + AI apply |
@@ -38,6 +40,16 @@ SPECTECHNICAL.md  = spec 体系本身的规则与 FAQ（本文档）
 | 改代码前习惯先确认 | propose → 审阅 → apply 与习惯一致 |
 
 OpenSpec 擅长 **brownfield（改现有系统）**：用 delta 描述「相对现状改什么」，而不是从零重写文档。
+
+### 1.2 `docs/` 文件命名
+
+| 层级 | 规则 | 示例 |
+|------|------|------|
+| **L1 主干** | 全大写单词 | `TECHNICAL.md`、`OPENSPEC.md`、`SPECTECHNICAL.md` |
+| **L2 专题** | `域.主题.md`，全大写 | `RAG.TECHNOLOGY.md` |
+| **L3 决策** | `adr/NNN-短标题.md`，kebab-case | `adr/001-embedding-hashing.md`（规划） |
+
+专题文档增多时用 `域.主题.md` 扩展（如 `TEST.HARNESS.md`）；超过 3～4 篇再考虑子目录。
 
 ---
 

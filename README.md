@@ -71,6 +71,7 @@ ai-knowledge-chat/
 ├── openspec/               # OpenSpec：specs + changes（M4 起）
 ├── docs/
 │   ├── TECHNICAL.md        # 架构与 API 详细文档
+│   ├── RAG.TECHNOLOGY.md   # RAG 原理、实现链路、FAQ
 │   ├── SPECTECHNICAL.md    # Spec 机制、delta 合并规则、FAQ
 │   └── OPENSPEC.md         # Spec 驱动工作流说明
 ├── pnpm-workspace.yaml
@@ -88,7 +89,7 @@ ai-knowledge-chat/
 | `GET` | `/api/documents?sessionId=` | 列出 session 文档 |
 | `POST` | `/api/chat/reset` | 清空 session 对话记忆（保留 PDF 向量） |
 
-**想懂项目读 [docs/TECHNICAL.md](./docs/TECHNICAL.md)；想验收 / 改行为读 [openspec/specs/](./openspec/specs/)；Spec 合并规则与 FAQ 见 [docs/SPECTECHNICAL.md](./docs/SPECTECHNICAL.md)。**
+**想懂项目读 [docs/TECHNICAL.md](./docs/TECHNICAL.md)；懂 RAG / Embedding / Citation 读 [docs/RAG.TECHNOLOGY.md](./docs/RAG.TECHNOLOGY.md)；想验收 / 改行为读 [openspec/specs/](./openspec/specs/)；Spec 合并规则与 FAQ 见 [docs/SPECTECHNICAL.md](./docs/SPECTECHNICAL.md)。**
 
 ## 环境变量
 
